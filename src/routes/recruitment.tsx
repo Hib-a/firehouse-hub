@@ -2,6 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import recruitImg from "@/assets/recruitment-cta.jpg";
 
@@ -57,32 +60,81 @@ const steps = [
   { n: "06", t: "Academy", d: "16-week paid recruit academy starting January." },
 ];
 
-function Recruitment() {
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
+// Age helper: today minus N years as YYYY-MM-DD
+function yearsAgoISO(years: number): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d.toISOString().slice(0, 10);
+}
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setSubmitting(true);
-    const fd = new FormData(e.currentTarget);
+const MAX_DOB = yearsAgoISO(18); // must be at least 18
+const MIN_DOB = yearsAgoISO(70); // reasonable upper bound
+
+const schema = z.object({
+  full_name: z
+    .string()
+    .trim()
+    .min(2, "Please enter your full name")
+    .max(80, "Name is too long")
+    .regex(/^[A-Za-zÀ-ÿ' -]+$/, "Letters, spaces, hyphens and apostrophes only"),
+  email: z.string().trim().email("Enter a valid email address").max(120, "Email is too long"),
+  phone: z
+    .string()
+    .trim()
+    .min(8, "Phone number is too short")
+    .max(20, "Phone number is too long")
+    .regex(/^[0-9+\-()\s]+$/, "Digits, spaces and + - ( ) only")
+    .refine((v) => v.replace(/\D/g, "").length >= 7, "Enter a valid phone number"),
+  dob: z
+    .string()
+    .min(1, "Date of birth is required")
+    .refine((v) => v <= MAX_DOB, "You must be at least 18 years old")
+    .refine((v) => v >= MIN_DOB, "Please enter a valid date of birth"),
+  certifications: z.string().trim().max(500, "Keep this under 500 characters").optional().or(z.literal("")),
+  experience: z.string().trim().max(1000, "Keep this under 1000 characters").optional().or(z.literal("")),
+  why_join: z
+    .string()
+    .trim()
+    .min(30, "Please write at least 30 characters")
+    .max(1000, "Keep this under 1000 characters"),
+});
+
+type FormValues = z.infer<typeof schema>;
+
+function Recruitment() {
+  const [done, setDone] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    mode: "onBlur",
+  });
+
+  const whyLen = (watch("why_join") ?? "").length;
+  const expLen = (watch("experience") ?? "").length;
+
+  async function onSubmit(values: FormValues) {
     const payload = {
-      full_name: String(fd.get("full_name") || "").trim(),
-      email: String(fd.get("email") || "").trim(),
-      phone: String(fd.get("phone") || "").trim(),
-      date_of_birth: (fd.get("dob") as string) || null,
-      certifications: String(fd.get("certifications") || ""),
-      experience: String(fd.get("experience") || ""),
-      why_join: String(fd.get("why_join") || ""),
+      full_name: values.full_name,
+      email: values.email.toLowerCase(),
+      phone: values.phone.replace(/\s+/g, " ").trim(),
+      date_of_birth: values.dob,
+      certifications: values.certifications || "",
+      experience: values.experience || "",
+      why_join: values.why_join,
     };
     const { error } = await supabase.from("recruitment_applications").insert(payload);
-    setSubmitting(false);
     if (error) {
-      toast.error("Could not submit. Check your details and try again.");
+      toast.error("Could not submit. Please try again in a moment.");
       return;
     }
     setDone(true);
     toast.success("Application received. We'll reach out within 5 business days.");
-    (e.target as HTMLFormElement).reset();
+    reset();
   }
 
   return (
@@ -161,22 +213,106 @@ function Recruitment() {
             <button onClick={() => setDone(false)} className="mt-6 text-sm font-semibold text-[var(--navy)] underline">Submit another</button>
           </div>
         ) : (
-          <form onSubmit={onSubmit} className="mt-8 space-y-5">
+          <form onSubmit={handleSubmit(onSubmit)} noValidate className="mt-8 space-y-5">
             <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Full name" name="full_name" required />
-              <Field label="Email" name="email" type="email" required />
-              <Field label="Phone" name="phone" type="tel" required />
-              <Field label="Date of birth" name="dob" type="date" />
+              <FieldWrap label="Full name" required error={errors.full_name?.message}>
+                <input
+                  {...register("full_name")}
+                  type="text"
+                  autoComplete="name"
+                  maxLength={80}
+                  aria-invalid={!!errors.full_name}
+                  className={inputCls(!!errors.full_name)}
+                />
+              </FieldWrap>
+
+              <FieldWrap label="Email" required error={errors.email?.message}>
+                <input
+                  {...register("email")}
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  maxLength={120}
+                  aria-invalid={!!errors.email}
+                  className={inputCls(!!errors.email)}
+                />
+              </FieldWrap>
+
+              <FieldWrap label="Phone" required error={errors.phone?.message} hint="Digits, spaces and + - ( ) only">
+                <input
+                  {...register("phone")}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={20}
+                  pattern="[0-9+\-()\s]{8,20}"
+                  placeholder="+1 (555) 123-4567"
+                  aria-invalid={!!errors.phone}
+                  className={inputCls(!!errors.phone)}
+                />
+              </FieldWrap>
+
+              <FieldWrap label="Date of birth" required error={errors.dob?.message} hint="Must be 18 or older">
+                <input
+                  {...register("dob")}
+                  type="date"
+                  min={MIN_DOB}
+                  max={MAX_DOB}
+                  aria-invalid={!!errors.dob}
+                  className={inputCls(!!errors.dob)}
+                />
+              </FieldWrap>
             </div>
-            <Field label="Certifications (EMT, CPR, etc.)" name="certifications" />
-            <Field label="Relevant experience" name="experience" textarea />
-            <Field label="Why do you want to join?" name="why_join" textarea />
+
+            <FieldWrap
+              label="Certifications"
+              error={errors.certifications?.message}
+              hint="Type your certifications and years, e.g. “EMT-B (2024), CPR/AED (2025)”. Bring originals to the interview — do not upload files."
+            >
+              <textarea
+                {...register("certifications")}
+                rows={3}
+                maxLength={500}
+                aria-invalid={!!errors.certifications}
+                className={inputCls(!!errors.certifications)}
+              />
+            </FieldWrap>
+
+            <FieldWrap
+              label="Relevant experience"
+              error={errors.experience?.message}
+              hint={`${expLen}/1000`}
+            >
+              <textarea
+                {...register("experience")}
+                rows={4}
+                maxLength={1000}
+                aria-invalid={!!errors.experience}
+                className={inputCls(!!errors.experience)}
+              />
+            </FieldWrap>
+
+            <FieldWrap
+              label="Why do you want to join?"
+              required
+              error={errors.why_join?.message}
+              hint={`${whyLen}/1000 — minimum 30 characters`}
+            >
+              <textarea
+                {...register("why_join")}
+                rows={5}
+                maxLength={1000}
+                aria-invalid={!!errors.why_join}
+                className={inputCls(!!errors.why_join)}
+              />
+            </FieldWrap>
+
             <button
               type="submit"
-              disabled={submitting}
+              disabled={isSubmitting}
               className="inline-flex items-center gap-2 rounded-md bg-[var(--ember)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--ember)]/90 disabled:opacity-60"
             >
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               Submit application
             </button>
           </form>
@@ -186,17 +322,40 @@ function Recruitment() {
   );
 }
 
-function Field({
-  label, name, type = "text", required, textarea,
-}: { label: string; name: string; type?: string; required?: boolean; textarea?: boolean }) {
+function inputCls(hasError: boolean) {
+  return [
+    "mt-2 w-full rounded-md border bg-card px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-2",
+    hasError
+      ? "border-destructive focus:border-destructive focus:ring-destructive/20"
+      : "border-input focus:border-[var(--navy)] focus:ring-[var(--navy)]/20",
+  ].join(" ");
+}
+
+function FieldWrap({
+  label,
+  required,
+  error,
+  hint,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  error?: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block">
-      <span className="block text-xs font-bold tracking-wider uppercase text-foreground/80">{label}{required && <span className="text-[var(--ember)]"> *</span>}</span>
-      {textarea ? (
-        <textarea name={name} required={required} rows={4} className="mt-2 w-full rounded-md border border-input bg-card px-3 py-2.5 text-sm shadow-sm focus:border-[var(--navy)] focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20" />
-      ) : (
-        <input name={name} type={type} required={required} className="mt-2 w-full rounded-md border border-input bg-card px-3 py-2.5 text-sm shadow-sm focus:border-[var(--navy)] focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20" />
-      )}
+      <span className="block text-xs font-bold tracking-wider uppercase text-foreground/80">
+        {label}
+        {required && <span className="text-[var(--ember)]"> *</span>}
+      </span>
+      {children}
+      {error ? (
+        <span className="mt-1 block text-xs font-medium text-destructive">{error}</span>
+      ) : hint ? (
+        <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>
+      ) : null}
     </label>
   );
 }

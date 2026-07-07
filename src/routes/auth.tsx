@@ -26,11 +26,21 @@ function AuthPage() {
     });
   }, [navigate]);
 
+  function friendlyError(raw: string): string {
+    const m = raw.toLowerCase();
+    if (m.includes("invalid login")) return "No account with that email/password. If you're new, click Sign up below.";
+    if (m.includes("rate limit")) return "Too many attempts. Wait a few minutes, or ask an existing admin to create your account.";
+    if (m.includes("already registered") || m.includes("already been registered")) return "That email is already registered. Try signing in instead.";
+    if (m.includes("password") && m.includes("6")) return "Password must be at least 6 characters.";
+    if (m.includes("weak") || m.includes("pwned") || m.includes("compromised")) return "That password has been found in a data breach. Please choose a different one.";
+    return raw;
+  }
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    const email = String(fd.get("email"));
+    const email = String(fd.get("email")).trim();
     const password = String(fd.get("password"));
     try {
       if (mode === "signup") {
@@ -39,8 +49,15 @@ function AuthPage() {
           options: { emailRedirectTo: window.location.origin + "/admin" },
         });
         if (error) throw error;
-        toast.success("Account created. You can sign in now.");
-        setMode("signin");
+        // Auto sign in (auto-confirm is enabled)
+        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInErr) {
+          toast.success("Account created. Please sign in.");
+          setMode("signin");
+        } else {
+          toast.success("Account created — signing you in");
+          navigate({ to: "/admin", replace: true });
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -48,8 +65,8 @@ function AuthPage() {
         navigate({ to: "/admin", replace: true });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong";
-      toast.error(message);
+      const raw = err instanceof Error ? err.message : "Something went wrong";
+      toast.error(friendlyError(raw));
     } finally {
       setLoading(false);
     }

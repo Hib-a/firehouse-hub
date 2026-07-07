@@ -165,9 +165,7 @@ function NewsSection() {
                 loading="lazy"
               />
             </div>
-            <div className="px-3 py-2 text-xs text-muted-foreground">
-              Live Facebook updates · replace with your department's Page URL in <code className="rounded bg-secondary px-1">SiteHeader</code>.
-            </div>
+            
           </div>
 
           {/* Editorial posts */}
