@@ -30,13 +30,25 @@ function Admin() {
   const qc = useQueryClient();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return;
-      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
-      setIsAdmin(!!roles?.some((r) => r.role === "admin"));
-    });
-  }, []);
+useEffect(() => {
+  async function checkAdmin() {
+    const { data: userData } = await supabase.auth.getUser();
+
+    console.log("Current user ID:", userData.user?.id);
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("*")
+      .eq("user_id", userData.user!.id);
+
+    console.log("Returned roles:", data);
+    console.log("Supabase error:", error);
+
+    setIsAdmin(data?.some((r) => r.role === "admin") ?? false);
+  }
+
+  checkAdmin();
+}, []);
 
   async function signOut() {
     await qc.cancelQueries();

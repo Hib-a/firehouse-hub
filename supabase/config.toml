@@ -1,1 +1,27 @@
-project_id = "stzqtnrnyeqiduedoveg"
+project_id = "mpisscwbzmdopqqnvnoe"
+
+[auth]
+enabled = true
+site_url = "https://firehouse-hub.netlify.app"
+additional_redirect_urls = ["https://firehouse-hub.netlify.app", "http://localhost:3000"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1s"
+otp_length = 6
+otp_expiry = 3600
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = false
+verify_enabled = false
+
+[auth.mfa.phone]
+enroll_enabled = false
+verify_enabled = false

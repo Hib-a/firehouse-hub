@@ -96,7 +96,7 @@ function Contact() {
         <div className="mx-auto max-w-7xl px-4 py-12">
           <iframe
             title="Station map"
-            src="https://www.google.com/maps?q=fire+station&output=embed"
+            src="https://www.google.com/maps?q=United+States&output=embed"
             width="100%"
             height="380"
             loading="lazy"
